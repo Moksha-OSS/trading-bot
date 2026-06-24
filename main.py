@@ -10,12 +10,13 @@ import requests
 
 # Retrieve credentials
 client_id = os.getenv("client_id")
-access_token = os.getenv("access_token")
 dhan_pin = os.getenv("dhan_pin")
 totp = 0
 generate_access_token = f'https://auth.dhan.co/app/generateAccessToken?dhanClientId={client_id}&pin={dhan_pin}&totp={totp}'
-
 response = requests.post(url=generate_access_token)
+data = response.json()
+
+access_token = data.get("accessToken") if data else os.getenv("access_token")
 
 # Initialize Dhan Context and Helper Classes
 dhan_context = DhanContext(client_id, access_token)
