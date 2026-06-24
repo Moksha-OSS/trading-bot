@@ -5,7 +5,7 @@ from dhanhq import DhanContext, HistoricalData, Order
 import pandas as pd
 import pandas_ta as ta
 import sys
-
+import requests
 
 
 # Retrieve credentials
@@ -14,6 +14,8 @@ access_token = os.getenv("access_token")
 dhan_pin = os.getenv("dhan_pin")
 totp = 0
 generate_access_token = f'https://auth.dhan.co/app/generateAccessToken?dhanClientId={client_id}&pin={dhan_pin}&totp={totp}'
+
+response = requests.post(url=generate_access_token)
 
 # Initialize Dhan Context and Helper Classes
 dhan_context = DhanContext(client_id, access_token)
@@ -31,7 +33,12 @@ current_position = 0
 print("Starting EMA Crossover Bot...")
 
 while True:
-    end_time = dt_time(14,30,0)
+    start_time = dt_time(10,0,0)
+    end_time = dt_time(14,45,0)
+
+    if datetime.now().time() <= start_time:
+        print("Before market hours\nExiting...")
+        sys.exit()
 
     if datetime.now().time() >= end_time:
         print("After market hours\nExiting...")
