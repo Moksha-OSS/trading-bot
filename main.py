@@ -1,114 +1,163 @@
 import os
 import time
+import sys
 from datetime import datetime, timedelta, time as dt_time
-from dhanhq import DhanContext, HistoricalData, Order
+from dhanhq import DhanContext, HistoricalData, Order, Portfolio
 import pandas as pd
 import pandas_ta as ta
-import sys
-import requests
+from dotenv import load_dotenv
 
+load_dotenv()
 
-# Retrieve credentials
+class Share():
+    def __init__(self, name: str, security_id: str, exchange_segment: str = "NSE", quantity: int = 1, order_type: str = "MARKET", product_type: str = "CNC"):
+        self.name = name
+        self.security_id = security_id
+        self.exchange_segment = exchange_segment
+        self.quantity = quantity
+        self.order_type = order_type
+        self.product_type = product_type
+
 client_id = os.getenv("client_id")
-dhan_pin = os.getenv("dhan_pin")
-totp = 0
-generate_access_token = f'https://auth.dhan.co/app/generateAccessToken?dhanClientId={client_id}&pin={dhan_pin}&totp={totp}'
-response = requests.post(url=generate_access_token)
-data = response.json()
+access_token = os.getenv("access_token")
 
-access_token = data.get("accessToken") if data else os.getenv("access_token")
-
-# Initialize Dhan Context and Helper Classes
-dhan_context = DhanContext(client_id, access_token)
+dhan_context = DhanContext(client_id=client_id, access_token=access_token)
 historical_client = HistoricalData(dhan_context)
 order_client = Order(dhan_context)
+portfolio = Portfolio(dhan_context=dhan_context)
 
-# --- CONFIGURATION ---
-SECURITY_ID = "12018" # Example: Suzlon NSE ID
-EXCHANGE = "NSE_EQ"
-QUANTITY = 1
-
-# Position tracker: 0 = Flat, 1 = Long, -1 = Short
-current_position = 0 
+Shares = [
+    Share(name="RELIANCE", security_id="2885"),
+    Share(name="HDFC_BANK", security_id="1333"),
+    Share(name="BHARTI_AIRTEL", security_id="10604"),
+    Share(name="ICICI_BANK", security_id="4963"),
+    Share(name="SBI", security_id="3045"),
+    Share(name="TCS", security_id="11536"),
+    Share(name="BAJAJ_FINANCE", security_id="317"),
+    Share(name="LARSEN_&_TOUBRO", security_id="11483"),
+    Share(name="LIC", security_id="9480"),
+    Share(name="MARUTI", security_id="10999"),
+    Share(name="NESTLE",security_id="17963")
+]
 
 print("Starting EMA Crossover Bot...")
 
 while True:
-    start_time = dt_time(10,0,0)
-    end_time = dt_time(14,45,0)
+    now_time = datetime.now().time()
+    end_time = dt_time(14, 45, 0)
 
-    if datetime.now().time() <= start_time:
-        print("Before market hours\nExiting...")
-        sys.exit()
+    # 1. End of Day Square-Off
+    if now_time >= end_time:
+        print("After market hours. Squaring off long positions...")
+        positions = portfolio.get_positions()
+        
+        if positions and isinstance(positions, list): 
+            for position in positions:
+                net_qty = position.get("netQty", 0)
+                
+                if net_qty > 0: 
+                    response = order_client.place_order(
+                        security_id=position["securityId"], 
+                        exchange_segment="NSE", 
+                        transaction_type="SELL", 
+                        quantity=net_qty, 
+                        order_type="MARKET", 
+                        product_type=position["productType"], 
+                        price=0
+                    )
+                    print(f"Tried final close (SELL) for {position.get('tradingSymbol', position['securityId'])}\nResponse: {response}")
 
-    if datetime.now().time() >= end_time:
-        print("After market hours\nExiting...")
+        print("Square-off complete. Exiting...")
         sys.exit()
         
     try:
-        # 1. Dynamic Dates (Fetch last 5 days to ensure enough data for EMA calculation)
         now = datetime.now()
-        to_date_str = now.strftime("%Y-%m-%d")
-        from_date_str = (now - timedelta(days=5)).strftime("%Y-%m-%d")
+        # Strict Date Formatting for API
+        to_date_str = now.strftime("%Y-%m-%d %H:%M:%S")
+        from_date_str = (now - timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
 
-        # 2. Fetch Data using the historical_client
-        historical_data = historical_client.intraday_minute_data(
-            security_id=SECURITY_ID,
-            exchange_segment=EXCHANGE,
-            instrument_type="EQUITY",
-            from_date=from_date_str,
-            to_date=to_date_str,
-            interval=5
-        )
-
-        # 3. Parse Data
-        # Dhan returns data inside a 'data' key dictionary if successful
-        if historical_data.get('status') == 'success' and 'data' in historical_data:
-            df = pd.DataFrame(historical_data['data'])
+        # 2. Fetch current positions before looping through stocks to prevent naked shorting
+        current_positions = {}
+        positions_response = portfolio.get_positions()
+        
+        # Parse the response safely
+        if isinstance(positions_response, list):
+            pos_list = positions_response
+        elif isinstance(positions_response, dict) and 'data' in positions_response:
+            pos_list = positions_response['data']
+        else:
+            pos_list = []
             
-            # Use pandas_ta DataFrame extension accessor (.ta) to avoid Pylance import errors
-            df["EMA_5"] = df.ta.ema(close="close", length=5)
-            df["EMA_10"] = df.ta.ema(close="close", length=10)
+        # Build a lookup dictionary: {"securityId": netQty}
+        for pos in pos_list:
+            net_qty = pos.get("netQty", 0) 
+            current_positions[str(pos.get("securityId"))] = net_qty
 
-            # Drop NA values generated by EMA lookback
-            df.dropna(inplace=True)
+        # 3. Evaluate Strategy
+        for share in Shares:
+            response = historical_client.intraday_minute_data(
+                security_id=share.security_id,
+                exchange_segment=share.exchange_segment,
+                instrument_type="EQUITY",
+                from_date=from_date_str,
+                to_date=to_date_str,
+                interval=5
+            )
+            
+            if response and isinstance(response, dict) and 'close' in response:
+                d = pd.DataFrame(response)
+                
+                if d.empty:
+                    continue
 
-            if len(df) >= 2:
-                # 4. Check conditions using the last two completed candles
-                ema5_prev, ema5_curr = df["EMA_5"].iloc[-2], df["EMA_5"].iloc[-1]
-                ema10_prev, ema10_curr = df["EMA_10"].iloc[-2], df["EMA_10"].iloc[-1]
+                d["EMA_5"] = d.ta.ema(close="close", length=5)
+                d["EMA_10"] = d.ta.ema(close="close", length=10)
+                d.dropna(inplace=True)
 
-                # CROSS UP -> BULLISH (BUY)
-                if (ema5_prev < ema10_prev) and (ema5_curr > ema10_curr):
-                    print("Bullish Crossover Detected!")
-                    
-                    if current_position == -1:
-                        print("Covering Short Position...")
-                        status = order_client.place_order(security_id=SECURITY_ID, exchange_segment=EXCHANGE, transaction_type="BUY", quantity=QUANTITY, order_type="MARKET", product_type="INTRADAY", price=0)
-                        print(f"Order Status\n{status}\n")
-                    
-                    if current_position <= 0:
-                        print("Going Long...")
-                        status = order_client.place_order(security_id=SECURITY_ID, exchange_segment=EXCHANGE, transaction_type="BUY", quantity=QUANTITY, order_type="MARKET", product_type="INTRADAY", price=0)
-                        current_position = 1
-                        print(f"Order Status\n{status}\n")
+                if len(d) >= 2:
+                    ema5_prev, ema5_curr = d["EMA_5"].iloc[-2], d["EMA_5"].iloc[-1]
+                    ema10_prev, ema10_curr = d["EMA_10"].iloc[-2], d["EMA_10"].iloc[-1]
 
-                # CROSS DOWN -> BEARISH (SELL)
-                elif (ema5_prev > ema10_prev) and (ema5_curr < ema10_curr):
-                    print("Bearish Crossover Detected!")
-                    
-                    if current_position == 1:
-                        print("Covering Long Position...")
-                        status = order_client.place_order(security_id=SECURITY_ID, exchange_segment=EXCHANGE, transaction_type="SELL", quantity=QUANTITY, order_type="MARKET", product_type="INTRADAY", price=0)
-                        print(f"Order Status\n{status}\n")
-                    if current_position >= 0:
-                        print("Going Short...")
-                        status = order_client.place_order(security_id=SECURITY_ID, exchange_segment=EXCHANGE, transaction_type="SELL", quantity=QUANTITY, order_type="MARKET", product_type="INTRADAY", price=0)
-                        current_position = -1
-                        print(f"Order Status\n{status}\n")
+                    # CROSS UP -> BULLISH (BUY)
+                    if (ema5_prev < ema10_prev) and (ema5_curr > ema10_curr):
+                        print(f"[{share.name}] Bullish Crossover Detected! Going Long...")
+                        status = order_client.place_order(
+                            security_id=share.security_id,
+                            exchange_segment=share.exchange_segment, 
+                            transaction_type="BUY", 
+                            quantity=share.quantity, 
+                            order_type=share.order_type, 
+                            product_type=share.product_type,
+                            price=0
+                        )
+                        print(f"Order Status: {status}\n")
+
+                    # CROSS DOWN -> BEARISH (SELL) - With Position Check
+                    elif (ema5_prev > ema10_prev) and (ema5_curr < ema10_curr):
+                        # Look up how many shares we currently hold of this specific stock
+                        held_qty = current_positions.get(share.security_id, 0)
+                        
+                        if held_qty > 0:
+                            print(f"[{share.name}] Bearish Crossover Detected! Exiting Long...")
+                            # Sell the minimum of what we hold vs the share quantity config
+                            sell_qty = min(share.quantity, held_qty)
+                            
+                            status = order_client.place_order(
+                                security_id=share.security_id, 
+                                exchange_segment=share.exchange_segment, 
+                                transaction_type="SELL", 
+                                quantity=sell_qty, 
+                                order_type=share.order_type, 
+                                product_type=share.product_type, 
+                                price=0
+                            )
+                            print(f"Order Status: {status}\n")
+                        else:
+                            print(f"[{share.name}] Bearish Crossover, but 0 shares held. Skipping sell to avoid short.")
+            else:
+                print(f"Failed to fetch valid data for {share.name}")
 
     except Exception as e:
         print(f"An error occurred during execution: {e}")
 
-    # Sleep for 5 minutes
-    time.sleep(5 * 60)
+    time.sleep(300)
