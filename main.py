@@ -9,13 +9,13 @@ import sys
 class Share():
     def __init__(
                 self,
-                name,
-                security_id,
-                exchange_segment="NSE",
-                quantity=1,
-                order_type="MARKET",
-                product_type="CNC",
-                price=0
+                name:str,
+                security_id:str,
+                exchange_segment:str="NSE",
+                quantity:int=1,
+                order_type:str="MARKET",
+                product_type:str="CNC",
+                price:int=0
                 ):
         self.name = name
         self.security_id = security_id
@@ -32,7 +32,18 @@ dhan_context = DhanContext(client_id=client_id,access_token=access_token)
 historical_client = HistoricalData(dhan_context)
 order_client = Order(dhan_context)
 
-Shares = []
+Shares = [
+    Share(name="RELIANCE",security_id="2885"), #1
+    Share(name="HDFC_BANK",security_id="1333"), #2
+    Share(name="BHARTI_AIRTEL",security_id="10604"), #3
+    Share(name="ICICI_BANK",security_id="4963"), #4
+    Share(name="SBI",security_id="3045"), #5
+    Share(name="TCS",security_id="11536"), #6
+    Share(name="BAJAJ_FINANCE",security_id="317"), #7
+    Share(name="LARSEN_&_TOUBRO",security_id="11483"), #8
+    Share(name="LIC",security_id="9480"), #9
+    Share(name="HUL",security_id="1394") #10
+]
 
 print("Starting EMA Crossover Bot...")
 
@@ -86,14 +97,6 @@ while True:
             data['security_id'] = share.security_id
             data['quantity'] = share.quantity
             historical_datas.append(data)
-        # historical_data = historical_client.intraday_minute_data(
-        #     security_id=SECURITY_ID,
-        #     exchange_segment=EXCHANGE,
-        #     instrument_type="EQUITY",
-        #     from_date=from_date_str,
-        #     to_date=to_date_str,
-        #     interval=5
-        # )
 
         # 3. Parse Data
         # Dhan returns data inside a 'data' key dictionary if successful
