@@ -31,13 +31,6 @@ Shares = [
     Share(name="HDFC_BANK", security_id="1333"),
     Share(name="BHARTI_AIRTEL", security_id="10604"),
     Share(name="ICICI_BANK", security_id="4963"),
-    Share(name="SBI", security_id="3045"),
-    Share(name="TCS", security_id="11536"),
-    Share(name="BAJAJ_FINANCE", security_id="317"),
-    Share(name="LARSEN_&_TOUBRO", security_id="11483"),
-    Share(name="LIC", security_id="9480"),
-    Share(name="MARUTI", security_id="10999"),
-    Share(name="NESTLE", security_id="17963")
 ]
 
 print("Starting EMA Crossover Bot...")
