@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Share():
-    def __init__(self, name: str, security_id: str, exchange_segment: str = "NSE", quantity: int = 1, order_type: str = "MARKET", product_type: str = "CNC"):
+    def __init__(self, name: str, security_id: str, exchange_segment: str = "NSE_EQ", quantity: int = 1, order_type: str = "MARKET", product_type: str = "CNC"):
         self.name = name
         self.security_id = security_id
         self.exchange_segment = exchange_segment
@@ -37,7 +37,7 @@ Shares = [
     Share(name="LARSEN_&_TOUBRO", security_id="11483"),
     Share(name="LIC", security_id="9480"),
     Share(name="MARUTI", security_id="10999"),
-    Share(name="NESTLE",security_id="17963")
+    Share(name="NESTLE", security_id="17963")
 ]
 
 print("Starting EMA Crossover Bot...")
@@ -58,12 +58,12 @@ while True:
                 if net_qty > 0: 
                     response = order_client.place_order(
                         security_id=position["securityId"], 
-                        exchange_segment="NSE", 
+                        exchange_segment=position.get("exchangeSegment", "NSE_EQ"), # FIXED Segment
                         transaction_type="SELL", 
                         quantity=net_qty, 
                         order_type="MARKET", 
                         product_type=position["productType"], 
-                        price=0
+                        price=0.0 # FIXED Price Float
                     )
                     print(f"Tried final close (SELL) for {position.get('tradingSymbol', position['securityId'])}\nResponse: {response}")
 
@@ -90,7 +90,7 @@ while True:
             
         # Build a lookup dictionary: {"securityId": netQty}
         for pos in pos_list:
-            net_qty = pos.get("netQty", 0) 
+            net_qty = pos.get("netQty", 0)
             current_positions[str(pos.get("securityId"))] = net_qty
 
         # 3. Evaluate Strategy
@@ -101,13 +101,16 @@ while True:
                 instrument_type="EQUITY",
                 from_date=from_date_str,
                 to_date=to_date_str,
-                interval=5
+                interval=5 # FIXED Interval String
             )
             
-            if response and isinstance(response, dict) and 'close' in response:
-                d = pd.DataFrame(response)
+            # UPDATED PARSING LOGIC: Look inside the 'data' key
+            if response and isinstance(response, dict) and 'data' in response:
+                d = pd.DataFrame(response['data'])
                 
-                if d.empty:
+                # Verify that 'close' exists before calculating EMAs
+                if d.empty or 'close' not in d.columns:
+                    print(f"[{share.name}] No valid close data found.")
                     continue
 
                 d["EMA_5"] = d.ta.ema(close="close", length=5)
@@ -128,7 +131,7 @@ while True:
                             quantity=share.quantity, 
                             order_type=share.order_type, 
                             product_type=share.product_type,
-                            price=0
+                            price=0.0 # FIXED Price Float
                         )
                         print(f"Order Status: {status}\n")
 
@@ -149,13 +152,13 @@ while True:
                                 quantity=sell_qty, 
                                 order_type=share.order_type, 
                                 product_type=share.product_type, 
-                                price=0
+                                price=0.0 # FIXED Price Float
                             )
                             print(f"Order Status: {status}\n")
                         else:
                             print(f"[{share.name}] Bearish Crossover, but 0 shares held. Skipping sell to avoid short.")
             else:
-                print(f"Failed to fetch valid data for {share.name}")
+                print(f"Failed to fetch valid API response for {share.name}")
 
     except Exception as e:
         print(f"An error occurred during execution: {e}")
