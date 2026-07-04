@@ -44,21 +44,20 @@ while True:
         print("After market hours. Squaring off long positions...")
         positions = portfolio.get_positions()
         
-        if positions and isinstance(positions, list): 
-            for position in positions:
-                net_qty = position.get("netQty", 0)
-                
-                if net_qty > 0: 
-                    response = order_client.place_order(
-                        security_id=position["securityId"], 
-                        exchange_segment=position.get("exchangeSegment", "NSE_EQ"), # FIXED Segment
-                        transaction_type="SELL", 
-                        quantity=net_qty, 
-                        order_type="MARKET", 
-                        product_type=position["productType"], 
-                        price=0.0 # FIXED Price Float
-                    )
-                    print(f"Tried final close (SELL) for {position.get('tradingSymbol', position['securityId'])}\nResponse: {response}")
+        for position in positions:
+            net_qty = position["data"]["netQty"]
+            
+            if net_qty > 0: 
+                response = order_client.place_order(
+                    security_id=position["securityId"], 
+                    exchange_segment=position.get("exchangeSegment", "NSE_EQ"), # FIXED Segment
+                    transaction_type="SELL", 
+                    quantity=net_qty, 
+                    order_type="MARKET", 
+                    product_type=position["productType"], 
+                    price=0.0 # FIXED Price Float
+                )
+                print(f"Tried final close (SELL) for {position["data"]["tradingSymbol"]}\nResponse: {response}")
 
         print("Square-off complete. Exiting...")
         sys.exit()
@@ -74,9 +73,7 @@ while True:
         positions_response = portfolio.get_positions()
         
         # Parse the response safely
-        if isinstance(positions_response, list):
-            pos_list = positions_response
-        elif isinstance(positions_response, dict) and 'data' in positions_response:
+        if isinstance(positions_response, dict) and 'data' in positions_response:
             pos_list = positions_response['data']
         else:
             pos_list = []
@@ -136,7 +133,7 @@ while True:
                         if held_qty > 0:
                             print(f"[{share.name}] Bearish Crossover Detected! Exiting Long...")
                             # Sell the minimum of what we hold vs the share quantity config
-                            sell_qty = min(share.quantity, held_qty)
+                            sell_qty = held_qty
                             
                             status = order_client.place_order(
                                 security_id=share.security_id, 
