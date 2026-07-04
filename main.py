@@ -29,11 +29,14 @@ portfolio = Portfolio(dhan_context=dhan_context)
 Shares = [
     Share(name="RELIANCE", security_id="2885"),
     Share(name="HDFC_BANK", security_id="1333"),
-    Share(name="BHARTI_AIRTEL", security_id="10604"),
+    Share(name="MARUTI", security_id="10999"),
     Share(name="ICICI_BANK", security_id="4963"),
+    Share(name="SBI",security_id="3045")
 ]
 
 print("Starting EMA Crossover Bot...")
+
+holdings = portfolio.get_holdings()["data"]
 
 while True:
     now_time = datetime.now().time()
@@ -69,19 +72,12 @@ while True:
         from_date_str = (now - timedelta(days=5)).strftime("%Y-%m-%d %H:%M:%S")
 
         # 2. Fetch current positions before looping through stocks to prevent naked shorting
+        positions = portfolio.get_positions()["data"]
         current_positions = {}
-        positions_response = portfolio.get_positions()
-        
-        # Parse the response safely
-        if isinstance(positions_response, dict) and 'data' in positions_response:
-            pos_list = positions_response['data']
-        else:
-            pos_list = []
-            
-        # Build a lookup dictionary: {"securityId": netQty}
-        for pos in pos_list:
-            net_qty = pos.get("netQty", 0)
-            current_positions[str(pos.get("securityId"))] = net_qty
+        for pos in positions:
+            current_positions[pos["securityId"]] = pos["netQty"]
+        for hold in holdings:
+            current_positions[hold["securityId"]] = hold["totalQty"]
 
         # 3. Evaluate Strategy
         for share in Shares:
